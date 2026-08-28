@@ -1,59 +1,134 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Kedai Rasa Kita POS - Backend API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+REST API backend for **Kedai Rasa Kita POS** built with Laravel 11, Sanctum, and PostgreSQL (Supabase).
 
-## About Laravel
+## Architecture
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+```text
+React (Frontend)
+   ↓ HTTP / JSON
+Laravel REST API
+   ↓
+Business Logic (Services)
+   ↓
+Supabase PostgreSQL
+```
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Backend Structure
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```text
+app/
+├── Http/
+│   ├── Controllers/Api/V1/
+│   │   ├── AuthController.php
+│   │   ├── StaffController.php
+│   │   ├── CategoryController.php
+│   │   ├── ProductController.php
+│   │   ├── InventoryController.php
+│   │   ├── OrderController.php
+│   │   ├── TransactionController.php
+│   │   ├── DashboardController.php
+│   │   ├── AnalyticsController.php
+│   │   ├── SettingsController.php
+│   │   └── HealthController.php
+│   ├── Requests/
+│   │   ├── LoginRequest.php
+│   │   ├── StoreStaffRequest.php
+│   │   ├── StoreCategoryRequest.php
+│   │   ├── StoreProductRequest.php
+│   │   ├── UpdateProductRequest.php
+│   │   ├── UpdateInventoryRequest.php
+│   │   ├── CheckoutRequest.php
+│   │   └── CancelOrderRequest.php
+│   ├── Resources/
+│   │   ├── UserResource.php
+│   │   ├── StaffResource.php
+│   │   ├── CategoryResource.php
+│   │   ├── ProductResource.php
+│   │   ├── InventoryResource.php
+│   │   ├── OrderResource.php
+│   │   ├── TransactionResource.php
+│   │   └── PaymentResource.php
+│   └── Middleware/
+│       └── CheckRole.php
+├── Models/
+│   └── User.php
+├── Services/
+│   ├── CheckoutService.php
+│   ├── InventoryService.php
+│   ├── CancellationService.php
+│   └── ReceiptService.php
+└── Traits/
+    └── ApiResponse.php
+```
 
-## Learning Laravel
+## API Modules & Endpoints (`/api/v1`)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Public Endpoints
+- `GET  /api/v1/health` - Health check
+- `POST /api/v1/auth/login` - User login
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Protected Endpoints (`auth:sanctum`)
 
-## Laravel Sponsors
+#### Shared (Admin & Cashier)
+- `POST /api/v1/auth/logout`
+- `GET  /api/v1/auth/me`
+- `GET  /api/v1/categories` & `GET /api/v1/categories/{id}`
+- `GET  /api/v1/products` & `GET /api/v1/products/{id}`
+- `GET  /api/v1/orders` & `GET /api/v1/orders/{id}`
+- `POST /api/v1/orders/checkout`
+- `POST /api/v1/orders/{id}/cancel`
+- `GET  /api/v1/transactions` & `GET /api/v1/transactions/{id}`
+- `GET  /api/v1/dashboard/summary`
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+#### Admin Only (`role:admin`)
+- `GET|POST|PUT|DELETE /api/v1/staff`
+- `POST|PUT|DELETE /api/v1/categories`
+- `POST|PUT|DELETE /api/v1/products`
+- `GET  /api/v1/inventory`
+- `POST /api/v1/inventory/{id}/restock`
+- `GET  /api/v1/analytics/reports`
+- `GET|PUT /api/v1/settings`
 
-### Premium Partners
+## Standard JSON Response Format
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Success Response (`200 OK`, `201 Created`)
+```json
+{
+    "success": true,
+    "message": "Product created successfully.",
+    "data": {}
+}
+```
 
-## Contributing
+### Error Response (`400`, `401`, `403`, `404`, `422`, `500`)
+```json
+{
+    "success": false,
+    "message": "The given data was invalid",
+    "errors": {
+        "email": ["The email field is required."]
+    }
+}
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Development Rules
 
-## Code of Conduct
+1. **Keep Controllers Thin**: Controllers delegate validation to Form Requests and complex operations to Services.
+2. **Business Logic in Services**: Complex operations (like checkout, stock deduction) reside in `app/Services/`.
+3. **Form Request Validation**: All incoming payload validations are defined in `app/Http/Requests/`.
+4. **API Resources for Serialization**: All responses utilize `app/Http/Resources/` to avoid exposing models blindly.
+5. **Server-Side Authorization**: Enforce role checks on backend (`CheckRole` middleware).
+6. **No Direct DB Access from Frontend**: React must only consume the Laravel REST API.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Testing & Execution
 
-## Security Vulnerabilities
+Run development server:
+```bash
+php artisan serve
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Run test suite:
+```bash
+php artisan test --filter=Api
+```
