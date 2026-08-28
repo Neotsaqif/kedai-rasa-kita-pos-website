@@ -17,6 +17,7 @@ import { UserManagementPage } from './features/users/UserManagementPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { ToastContainer } from './components/ui/Toast';
 
+
 const AppContent: React.FC = () => {
   const { currentUser, activeTab } = useApp();
 
