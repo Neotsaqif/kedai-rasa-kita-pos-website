@@ -1,70 +1,130 @@
 # Implementation Plan: Kedai Rasa Kita POS System
 
-## Tech Stack
-| Layer | Choice | Why |
+## Tech Stack & Architecture
+
+| Layer | Technology | Rationale & Details |
 |---|---|---|
-| Frontend | React (Vite) | Fast, simple SPA for POS screen + admin dashboard |
-| Backend & DB | Supabase (PostgreSQL + Auth + RLS) | Managed DB, built-in Auth, Row-Level Security, handles backups & API layer smoothly |
-| Middleware / Server | Node.js + Express (Optional) / Supabase Client | Direct client interaction + RPC functions for atomic stock updates |
-| Auth | Supabase Auth (JWT + RLS roles) | Built-in role management (`admin` / `cashier`) |
-| Receipt printing | Browser print (thermal-printer CSS) or ESC/POS via USB | Avoids hardware SDK complexity for V1 |
-| Hosting | Vercel / Netlify + Supabase Cloud | Free/cheap tier, accessible remotely from store & home |
-| Backups | Automated daily DB dump (Supabase Point-in-time / Daily Backups) | Integrated cloud backup, low operational overhead |
+| **Frontend** | React (Vite) + Tailwind CSS | Fast SPA execution, cashier-friendly warm cream & orange theme (`cream-50`, `brand-500`, `brand-900`) |
+| **Backend & DB** | Supabase (PostgreSQL + Auth + RLS) | Managed database, real-time sync, built-in Auth, Row Level Security (RLS) policies |
+| **Atomic Operations** | PostgreSQL Stored Procedures (RPC) | `process_checkout` RPC function guarantees atomic transaction creation + stock decrement |
+| **Auth & Security** | Supabase Auth (JWT + RLS) | Role-based permissions (`admin` vs `cashier`) enforced directly at database level |
+| **Receipt Printing** | Thermal Printer CSS (`@media print`) | Native browser printing for 80mm thermal receipt format |
+| **Hosting** | Vercel / Netlify + Supabase Cloud | Free/cheap tier deployment accessible from store tablet/laptop and owner's home |
+| **Backups** | Supabase Cloud Daily Backups | Automated Point-in-Time recovery & daily database snapshots |
 
-## Architecture
-- Single web app, responsive layout (desktop for admin, tablet/laptop for POS)
-- Supabase JS Client + Database RPC for atomic checkout & stock decrement
-- Row Level Security (RLS) policies enforcing role permissions (`admin` vs `cashier`)
-- DB tables: `users` (or `profiles`), `categories`, `products`, `sales`, `sale_items`, `stock_logs`
+---
 
-## Database Schema (high-level)
-- **profiles**: id (references auth.users), name, role (admin/cashier), is_active
-- **categories**: id, name, created_at
-- **products**: id, sku, name, category_id, price, stock_qty, is_active, created_at
-- **sales**: id, receipt_number, cashier_id, total_amount, payment_method (cash/qris/debit/transfer), status (completed/cancelled), created_at
-- **sale_items**: id, sale_id, product_id, product_name, qty, price_at_sale
-- **stock_logs**: id, product_id, change_qty, reason (sale/manual adjustment/refund), created_at
+## Detailed Database Schema
 
-## Build Phases (4 weeks)
+```
++------------------+       +------------------+       +------------------+
+|     profiles     |       |    categories    |       |     products     |
++------------------+       +------------------+       +------------------+
+| id (UUID, PK)    |<-----+| id (PK)          |<-----+| id (PK)          |
+| name             |       | name             |       | sku (UNIQUE)     |
+| role             |       +------------------+       | name             |
+| is_active        |                                  | category_id (FK) |
++------------------+                                  | price            |
+         ^                                            | stock_qty        |
+         |                                            | is_active        |
+         |                                            +------------------+
+         |                                                     ^
++------------------+       +------------------+                |
+|      sales       |       |    sale_items    |                |
++------------------+       +------------------+                |
+| id (PK)          |<-----+| id (PK)          |                |
+| receipt_number   |       | sale_id (FK)     |                |
+| cashier_id (FK)  |       | product_id (FK)  |----------------+
+| total_amount     |       | product_name     |
+| payment_method   |       | qty              |       +------------------+
+| status           |       | price_at_sale    |       |    stock_logs    |
+| created_at       |       +------------------+       +------------------+
++------------------+                                  | id (PK)          |
+                                                      | product_id (FK)  |
+                                                      | change_qty       |
+                                                      | reason           |
+                                                      | created_at       |
+                                                      +------------------+
+```
 
-### Week 1 — Foundation
-- Project setup (repo, DB, hosting env)
-- Auth: login, role-based access (admin/cashier)
-- Product/menu management CRUD (admin)
-- Base UI shell (POS layout + admin layout)
+### Table Definitions & Business Rules
+1. **`profiles`**
+   - Linked 1:1 to `auth.users.id`.
+   - Attributes: `id`, `name`, `role` (`admin` | `cashier`), `is_active` (boolean).
+   - RLS: Cashiers can view own profile; Admins can view/manage all profiles.
+2. **`categories`**
+   - Attributes: `id`, `name`, `created_at`.
+3. **`products`**
+   - Attributes: `id`, `sku`, `name`, `category_id`, `price`, `stock_qty`, `is_active`, `created_at`.
+   - Business Rule: Cashiers have read-only access. Only Admin can insert/update price & stock.
+4. **`sales`**
+   - Attributes: `id`, `receipt_number` (formatted e.g. `KRK-20260831-0001`), `cashier_id`, `total_amount`, `payment_method` (`cash`, `qris`, `debit`, `transfer`), `status` (`completed`, `cancelled`), `created_at`.
+   - Business Rule: Refunds/cancellations require admin approval.
+5. **`sale_items`**
+   - Attributes: `id`, `sale_id`, `product_id`, `product_name` (snapshot), `qty`, `price_at_sale` (snapshot).
+6. **`stock_logs`**
+   - Attributes: `id`, `product_id`, `change_qty`, `reason` (`sale`, `adjustment`, `refund`), `created_at`.
 
-### Week 2 — Core POS Flow
-- POS sales screen: add items, adjust qty, cart
-- Payment recording (Cash, QRIS, Debit Card, Bank Transfer)
-- Checkout: finalize sale, auto-decrement stock
-- Receipt generation/printing
+---
 
-### Week 3 — Reporting & Admin Tools
-- Sales history (cashier: own transactions; admin: all)
-- Sales reports (admin) — totals, filter by date
-- Stock tracking view + manual stock adjustment (admin)
-- Cashier account management (admin: create/deactivate)
-- Refund/cancellation flow with admin approval
+## 4-Week Implementation Plan
 
-### Week 4 — Data, Polish, Delivery
-- Import existing Excel product data
-- Backups setup (automated DB dump)
-- Bug fixes, UI polish (cream/brown-orange theme)
-- Client review session
-- Revisions round 1
-- Final deployment + walkthrough with staff
+```mermaid
+gantt
+    title Kedai Rasa Kita POS Implementation Roadmap
+    dateFormat  YYYY-MM-DD
+    section Week 1: Foundation
+    Project Setup & Tailwind Config     :done, w1a, 2026-08-31, 2d
+    Supabase Migration & Auth Integration :active, w1b, 2026-09-02, 3d
+    Product & Category Management (Admin): w1c, 2026-09-05, 2d
+    section Week 2: Core POS Flow
+    POS Sales Screen & Cart Logic        :w2a, 2026-09-07, 3d
+    Payment Recording & RPC Checkout     :w2b, 2026-09-10, 2d
+    Thermal Receipt Generation & Print   :w2c, 2026-09-12, 2d
+    section Week 3: Admin & Reporting
+    Sales History & Cashier Filter      :w3a, 2026-09-14, 2d
+    Sales Analytics & Date Range Reports :w3b, 2026-09-16, 2d
+    Stock Adjustment & Admin Refund Flow :w3c, 2026-09-18, 3d
+    section Week 4: Polish & Delivery
+    Excel Product Import & Seeding       :w4a, 2026-09-21, 2d
+    Testing Checklist & Edge Cases       :w4b, 2026-09-23, 2d
+    Deployment & Staff Walkthrough       :w4c, 2026-09-25, 3d
+```
 
-*(2nd revision round handled post-delivery per agreed terms.)*
+### Week 1 — Foundation & Auth Infrastructure
+- [x] React (Vite) + Tailwind CSS base configuration with brand colors.
+- [x] Initialized Supabase client and defined `supabase/schema.sql`.
+- [ ] Deploy schema to Supabase Cloud & set up RLS security policies.
+- [ ] Implement Login Screen with Supabase Auth & profile role check (`admin`/`cashier`).
+- [ ] Implement Admin Product & Category CRUD screens.
 
-## Testing Checklist Before Delivery
-- Full daily workflow run-through: Login → Sell → Payment → Checkout → Stock update → Receipt → Transaction history
-- Role permission checks (cashier blocked from prices/stock/reports)
-- Stock doesn't go negative / edge cases (out-of-stock item)
-- Refund/cancellation requires admin approval
-- Receipt prints correctly
-- System accessible from store network and remotely (home)
-- Backup runs and is restorable
+### Week 2 — Core POS Sales Flow
+- [ ] Build cashier-focused POS Screen with category filter & search.
+- [ ] Implement interactive Cart panel (add item, qty counter, subtotals).
+- [ ] Implement Payment Modal (Cash, QRIS, Debit Card, Bank Transfer).
+- [ ] Wire `process_checkout` RPC for atomic checkout & instant stock auto-decrement.
+- [ ] Build thermal printer receipt component (`@media print` CSS, 80mm format).
 
-## Post-Launch
-- Monitoring: basic uptime check (free/low-cost, e.g. UptimeRobot) — no paid ops package
-- Maintenance: bug fixes covered under revision rounds; new features quoted separately
+### Week 3 — Admin Reporting & Stock Tools
+- [ ] Sales History View: Cashiers view their own transactions; Admin views all transactions.
+- [ ] Sales Reports Dashboard: Daily/Weekly/Monthly totals, payment method breakdown, date range filters.
+- [ ] Manual Stock Adjustment Interface (Admin only) with mandatory log reasons (`adjustment`).
+- [ ] Refund / Transaction Cancellation flow with mandatory Admin approval prompt.
+- [ ] Cashier Account Management (Admin can create/deactivate staff logins).
+
+### Week 4 — Migration, Backups & Delivery
+- [ ] Import client's existing Excel menu catalog into `products` table.
+- [ ] Configure Supabase Cloud automated database backups.
+- [ ] Run full **Definition of Done** testing checklist (edge cases, out-of-stock validation, RLS security check).
+- [ ] Deploy frontend to Vercel/Netlify.
+- [ ] Conduct staff walkthrough & Client Revision Round 1.
+
+---
+
+## Testing & Definition of Done Checklist
+
+- [ ] **Daily Workflow Validation**: Full run-through (`Login → Sell → Payment → Checkout → Stock Update → Receipt → History`).
+- [ ] **Permission Locks**: Verify cashier account cannot edit prices, manually adjust stock, view global reports, or deactivate accounts.
+- [ ] **Stock Atomic Integrity**: Verify stock cannot drop below zero when simultaneous checkouts occur.
+- [ ] **Receipt Accuracy**: Verify 80mm receipt prints cleanly on thermal hardware.
+- [ ] **Remote Access**: Confirm application loads seamlessly from both store network & remote home network.
