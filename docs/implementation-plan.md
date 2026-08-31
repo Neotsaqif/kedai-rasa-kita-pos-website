@@ -94,9 +94,9 @@ gantt
 ### Week 1 — Foundation & Auth Infrastructure
 - [x] React (Vite) + Tailwind CSS base configuration with brand colors.
 - [x] Initialized Supabase client and defined `supabase/schema.sql`.
-- [ ] Deploy schema to Supabase Cloud & set up RLS security policies.
-- [ ] Implement Login Screen with Supabase Auth & profile role check (`admin`/`cashier`).
-- [ ] Implement Admin Product & Category CRUD screens.
+- [x] Deploy schema to Supabase Cloud & set up RLS security policies.
+- [x] Implement Login Screen with Supabase Auth & profile role check (`admin`/`cashier`).
+- [x] Implement Admin Product & Category CRUD screens.
 
 ### Week 2 — Core POS Sales Flow
 - [ ] Build cashier-focused POS Screen with category filter & search.
