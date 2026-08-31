@@ -1,6 +1,0 @@
-{
-  "name": "Kedai Rasa Kita",
-  "description": "A modern, fast Point of Sale (POS) and store management system for Kedai Rasa Kita food & beverage shop.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
