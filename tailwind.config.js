@@ -10,16 +10,16 @@ export default {
           200: "#F2C48E",
           300: "#E8A255",
           400: "#D9852F",
-          500: "#C96A1F", // Deep amber / burnt orange accent
-          600: "#A8551A",
-          700: "#8A4516",
-          800: "#6B3512",
-          900: "#2D1A0E", // Dark brown for text & nav
+          500: "#5A5A40", // Brand olive primary
+          600: "#4A4A34",
+          700: "#3A3A28",
+          800: "#2B2B1E",
+          900: "#2B2B1E", // Dark brand olive
         },
         cream: {
-          50: "#F9F6F0", // Base off-white
-          100: "#F0EBE1", // Secondary base
-          200: "#E5DCCB",
+          50: "#FAF8F5", // Base off-white
+          100: "#F3EFE6", // Secondary base
+          200: "#E2DBD0",
           300: "#D6C9B0",
         },
       },

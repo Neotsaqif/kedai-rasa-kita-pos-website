@@ -63,6 +63,12 @@ export function formatShortDay(value) {
   return date.toLocaleDateString("id-ID", { weekday: "short" });
 }
 
+export function formatDateShort(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return date.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
 /**
  * Map payment method key to Indonesian label
  * @param {string} method

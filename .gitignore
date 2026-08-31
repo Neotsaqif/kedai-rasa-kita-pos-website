@@ -34,3 +34,6 @@ dist-ssr/
 # Temporary files
 tmp/
 *.tmp
+
+# Frontend example
+frontend-example/

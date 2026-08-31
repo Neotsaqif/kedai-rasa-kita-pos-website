@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from "react";
 import {
+  Package,
   Plus,
   Edit2,
-  Trash2,
-  Package,
+  Power,
+  Sliders,
+  Search,
+  AlertTriangle,
+  X,
   Loader2,
   Check,
-  X,
-  Search,
-  Filter,
-  AlertCircle,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { formatRupiah } from "../lib/format";
@@ -18,24 +18,30 @@ export default function ProductManager() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [adjustingProduct, setAdjustingProduct] = useState(null);
+
   const [formData, setFormData] = useState({
-    name: "",
     sku: "",
+    name: "",
     category_id: "",
     price: "",
     stock_qty: "",
+    image_url: "",
     is_active: true,
   });
-  const [stockAdjustment, setStockAdjustment] = useState({
-    enabled: false,
+
+  const [stockAdjustData, setStockAdjustData] = useState({
+    type: "add",
+    amount: "",
     reason: "",
   });
+
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -69,53 +75,50 @@ export default function ProductManager() {
     fetchData();
   }, []);
 
-  const handleOpenModal = (product = null) => {
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesCat =
+      selectedCategory === "all" || p.category_id === Number(selectedCategory);
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "active" && p.is_active) ||
+      (statusFilter === "inactive" && !p.is_active);
+    return matchesSearch && matchesCat && matchesStatus;
+  });
+
+  const openAddModal = () => {
+    setFormData({
+      sku: `KRK-FB-${String(products.length + 1).padStart(3, "0")}`,
+      name: "",
+      category_id: categories[0]?.id || "",
+      price: "",
+      stock_qty: "10",
+      image_url: "",
+      is_active: true,
+    });
     setErrorMsg("");
-    setStockAdjustment({ enabled: false, reason: "" });
-    if (product) {
-      setEditingProduct(product);
-      setFormData({
-        name: product.name || "",
-        sku: product.sku || "",
-        category_id: product.category_id || "",
-        price: product.price || "",
-        stock_qty: product.stock_qty || "",
-        is_active: product.is_active ?? true,
-      });
-    } else {
-      setEditingProduct(null);
-      setFormData({
-        name: "",
-        sku: "",
-        category_id: categories[0]?.id || "",
-        price: "",
-        stock_qty: "0",
-        is_active: true,
-      });
-    }
-    setIsModalOpen(true);
+    setIsAddModalOpen(true);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setEditingProduct(null);
+  const openEditModal = (p) => {
+    setEditingProduct(p);
+    setFormData({
+      sku: p.sku || "",
+      name: p.name || "",
+      category_id: p.category_id || "",
+      price: p.price ? p.price.toString() : "",
+      stock_qty: p.stock_qty ? p.stock_qty.toString() : "0",
+      image_url: p.image_url || "",
+      is_active: p.is_active ?? true,
+    });
     setErrorMsg("");
-    setStockAdjustment({ enabled: false, reason: "" });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.price) return;
-
-    // Stock adjustment requires a reason
-    if (
-      editingProduct &&
-      stockAdjustment.enabled &&
-      !stockAdjustment.reason.trim()
-    ) {
-      setErrorMsg("Alasan penyesuaian stok wajib diisi.");
-      return;
-    }
 
     setSubmitting(true);
     setErrorMsg("");
@@ -126,6 +129,7 @@ export default function ProductManager() {
       category_id: formData.category_id ? Number(formData.category_id) : null,
       price: parseFloat(formData.price),
       stock_qty: parseInt(formData.stock_qty || 0, 10),
+      image_url: formData.image_url.trim() || null,
       is_active: formData.is_active,
     };
 
@@ -136,32 +140,14 @@ export default function ProductManager() {
           .update(payload)
           .eq("id", editingProduct.id);
         if (error) throw error;
-
-        // Log stock adjustment if enabled
-        if (stockAdjustment.enabled) {
-          const changeQty =
-            parseInt(formData.stock_qty || 0, 10) -
-            parseInt(editingProduct.stock_qty || 0, 10);
-          if (changeQty !== 0) {
-            const { error: logError } = await supabase
-              .from("stock_logs")
-              .insert([
-                {
-                  product_id: editingProduct.id,
-                  change_qty: changeQty,
-                  reason: "adjustment",
-                },
-              ]);
-            if (logError) throw logError;
-          }
-        }
+        setEditingProduct(null);
       } else {
         const { error } = await supabase.from("products").insert([payload]);
         if (error) throw error;
+        setIsAddModalOpen(false);
       }
 
       await fetchData();
-      handleCloseModal();
     } catch (err) {
       setErrorMsg(err.message || "Gagal menyimpan produk");
     } finally {
@@ -169,90 +155,112 @@ export default function ProductManager() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Yakin ingin menghapus produk ini?")) return;
-
+  const handleToggleActive = async (p) => {
     try {
-      const { error } = await supabase.from("products").delete().eq("id", id);
+      const { error } = await supabase
+        .from("products")
+        .update({ is_active: !p.is_active })
+        .eq("id", p.id);
       if (error) throw error;
       await fetchData();
     } catch (err) {
-      alert(err.message || "Gagal menghapus produk");
+      alert(err.message || "Gagal mengubah status produk");
     }
   };
 
-  const filteredProducts = products.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesCategory =
-      selectedCategory === "all" || p.category_id === Number(selectedCategory);
-    return matchesSearch && matchesCategory;
-  });
+  const handleStockAdjustmentSubmit = async (e) => {
+    e.preventDefault();
+    if (!adjustingProduct) return;
 
-  const getStockBadge = (stock) => {
-    const qty = Number(stock ?? 0);
-    if (qty <= 0) {
-      return (
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-          Habis
-        </span>
-      );
-    }
-    if (qty <= 5) {
-      return (
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
-          Stok {qty}
-        </span>
-      );
-    }
-    return (
-      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-        Stok {qty}
-      </span>
+    const amt = parseInt(stockAdjustData.amount, 10) || 0;
+    if (amt <= 0) return;
+
+    const qtyChange = stockAdjustData.type === "add" ? amt : -amt;
+    const newStock = Math.max(
+      0,
+      Number(adjustingProduct.stock_qty || 0) + qtyChange
     );
+
+    setSubmitting(true);
+    setErrorMsg("");
+
+    try {
+      // Update product stock
+      const { error: updateErr } = await supabase
+        .from("products")
+        .update({ stock_qty: newStock })
+        .eq("id", adjustingProduct.id);
+
+      if (updateErr) throw updateErr;
+
+      // Log stock adjustment
+      await supabase.from("stock_logs").insert([
+        {
+          product_id: adjustingProduct.id,
+          product_name: adjustingProduct.name,
+          change_qty: qtyChange,
+          quantity_change: qtyChange,
+          reason: "adjustment",
+          note: stockAdjustData.reason,
+        },
+      ]);
+
+      setAdjustingProduct(null);
+      setStockAdjustData({ type: "add", amount: "", reason: "" });
+      await fetchData();
+    } catch (err) {
+      setErrorMsg(err.message || "Gagal mengupdate stok produk");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-brand-900/10 shadow-sm">
+    <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-6 font-sans text-brand-900 bg-cream-50">
+      {/* Top Header & Actions Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-cream-200 p-5 sm:p-6 shadow-xs">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <Package className="w-5 h-5 text-brand-600" />
-            Manajemen Produk & Stok
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Kelola katalog, harga, dan stok produk
+          <div className="flex items-center gap-2">
+            <Package className="w-6 h-6 text-brand-500" />
+            <h1 className="text-xl font-bold text-brand-900 font-serif-heading">
+              Manajemen Produk &amp; Stok
+            </h1>
+          </div>
+          <p className="text-xs text-brand-500/70 mt-1">
+            Kelola daftar menu, penyesuaian stok manual, dan status aktifasi produk shop.
           </p>
         </div>
+
         <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm rounded-xl shadow-md transition flex items-center gap-2"
+          id="btn-add-product"
+          onClick={openAddModal}
+          className="bg-brand-500 hover:bg-brand-900 text-white font-bold px-5 py-2.5 text-xs sm:text-sm shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          Tambah Produk
+          Tambah Produk Baru
         </button>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      {/* Filters Bar */}
+      <div className="bg-white border border-cream-200 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row items-center gap-3 justify-between">
+        <div className="relative w-full md:w-80">
+          <Search className="w-4 h-4 text-brand-500/60 absolute left-4 top-1/2 -translate-y-1/2" />
           <input
+            id="product-search-input"
             type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Cari nama produk atau SKU..."
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-brand-900/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari nama atau SKU produk..."
+            className="w-full bg-cream-100 text-brand-900 border border-cream-200 py-2.5 pl-10 pr-4 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder:text-brand-500/60"
           />
         </div>
-        <div className="relative w-48">
-          <Filter className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
           <select
+            id="product-cat-select"
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white border border-brand-900/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm appearance-none"
+            className="bg-cream-100 text-brand-900 border border-cream-200 px-4 py-2 text-xs focus:outline-none focus:border-brand-500 cursor-pointer"
           >
             <option value="all">Semua Kategori</option>
             {categories.map((c) => (
@@ -261,136 +269,188 @@ export default function ProductManager() {
               </option>
             ))}
           </select>
+
+          <select
+            id="product-status-select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-cream-100 text-brand-900 border border-cream-200 px-4 py-2 text-xs focus:outline-none focus:border-brand-500 cursor-pointer"
+          >
+            <option value="all">Semua Status</option>
+            <option value="active">Aktif Saja</option>
+            <option value="inactive">Nonaktif Saja</option>
+          </select>
         </div>
       </div>
 
-      {/* Table */}
-      {loading ? (
-        <div className="flex items-center justify-center p-12 text-gray-400">
-          <Loader2 className="w-6 h-6 animate-spin mr-2" />
-          <span>Memuat produk...</span>
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center border border-brand-900/10 shadow-sm text-gray-500 text-sm">
-          <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-          <p>Tidak ada produk ditemukan.</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Coba ubah kata kunci atau filter kategori.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-brand-900/10 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="bg-cream-50 text-xs font-semibold text-gray-700 uppercase border-b border-brand-900/10">
+      {/* Product Table */}
+      <div className="bg-white border border-cream-200 overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-brand-900">
+            <thead className="bg-cream-100 text-brand-500 font-semibold border-b border-cream-200 uppercase tracking-wider">
+              <tr>
+                <th className="py-3.5 px-4">Produk</th>
+                <th className="py-3.5 px-4">SKU</th>
+                <th className="py-3.5 px-4">Kategori</th>
+                <th className="py-3.5 px-4">Harga</th>
+                <th className="py-3.5 px-4">Stok</th>
+                <th className="py-3.5 px-4">Status</th>
+                <th className="py-3.5 px-4 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-cream-200">
+              {loading ? (
                 <tr>
-                  <th className="px-6 py-4">SKU / Nama</th>
-                  <th className="px-6 py-4">Kategori</th>
-                  <th className="px-6 py-4">Harga</th>
-                  <th className="px-6 py-4">Stok</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Aksi</th>
+                  <td colSpan={7} className="py-10 text-center text-brand-500/70 font-medium">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto mb-1 text-brand-500" />
+                    <span>Memuat data produk...</span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredProducts.map((prod) => (
-                  <tr key={prod.id} className="hover:bg-cream-50/50 transition">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-gray-900">{prod.name}</div>
-                      <div className="text-xs text-gray-400">
-                        {prod.sku || "Tanpa SKU"}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 bg-cream-100 text-brand-900 text-xs font-medium rounded-lg">
-                        {prod.categories?.name || "Tanpa Kategori"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-extrabold text-brand-600">
-                      {formatRupiah(prod.price)}
-                    </td>
-                    <td className="px-6 py-4">
-                      {getStockBadge(prod.stock_qty)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          prod.is_active
-                            ? "bg-green-100 text-green-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {prod.is_active ? "Aktif" : "Nonaktif"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      <button
-                        onClick={() => handleOpenModal(prod)}
-                        className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg transition"
-                        title="Edit Produk"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(prod.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                        title="Hapus Produk"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+              ) : filteredProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-brand-500/70 font-medium">
+                    Tidak ada produk ditemukan.
+                  </td>
+                </tr>
+              ) : (
+                filteredProducts.map((p) => {
+                  const categoryName =
+                    p.categories?.name ||
+                    categories.find((c) => c.id === p.category_id)?.name ||
+                    "Tanpa Kategori";
+                  const stock = Number(p.stock_qty ?? p.stock ?? 0);
 
-      {/* Product Form Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-brand-900/10 space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
-              <h3 className="font-bold text-gray-900">
+                  return (
+                    <tr key={p.id} className="hover:bg-cream-50 transition-colors">
+                      <td className="py-3 px-4 font-semibold text-brand-900 flex items-center gap-3">
+                        <div className="w-9 h-9 bg-cream-100 border border-cream-200 overflow-hidden shrink-0 flex items-center justify-center">
+                          {p.image_url || p.imageUrl ? (
+                            <img
+                              src={p.image_url || p.imageUrl}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Package className="w-4 h-4 text-brand-500/70" />
+                          )}
+                        </div>
+                        <span className="font-serif-heading font-bold text-sm">
+                          {p.name}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-brand-500/70">
+                        {p.sku || `KRK-${p.id}`}
+                      </td>
+                      <td className="py-3 px-4 text-brand-500 font-medium">
+                        {categoryName}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-brand-500">
+                        {formatRupiah(p.price)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`font-bold px-2.5 py-1 text-[11px] ${
+                            stock <= 0
+                              ? "bg-rose-100 text-rose-800 border border-rose-200"
+                              : stock <= 10
+                              ? "bg-amber-100 text-amber-800 border border-amber-200"
+                              : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                          }`}
+                        >
+                          {stock} Unit
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {p.is_active ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                            Aktif
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                            Nonaktif
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            id={`btn-adjust-stock-${p.id}`}
+                            onClick={() => {
+                              setAdjustingProduct(p);
+                              setStockAdjustData({ type: "add", amount: "", reason: "" });
+                              setErrorMsg("");
+                            }}
+                            title="Penyesuaian Stok Manual"
+                            className="p-1.5 bg-cream-100 hover:bg-cream-200 text-brand-500 border border-cream-200 transition-all cursor-pointer"
+                          >
+                            <Sliders className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            id={`btn-edit-prod-${p.id}`}
+                            onClick={() => openEditModal(p)}
+                            title="Edit Produk"
+                            className="p-1.5 bg-cream-100 hover:bg-cream-200 text-brand-500 border border-cream-200 transition-all cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            id={`btn-toggle-prod-${p.id}`}
+                            onClick={() => handleToggleActive(p)}
+                            title={p.is_active ? "Nonaktifkan Produk" : "Aktifkan Produk"}
+                            className={`p-1.5 border transition-all cursor-pointer ${
+                              p.is_active
+                                ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200"
+                                : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
+                            }`}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add / Edit Product Modal */}
+      {(isAddModalOpen || editingProduct) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-xs">
+          <div className="bg-white border border-cream-200 w-full max-w-lg overflow-hidden shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 bg-cream-100 border-b border-cream-200">
+              <h3 className="text-base font-bold text-brand-900 font-serif-heading">
                 {editingProduct ? "Edit Produk" : "Tambah Produk Baru"}
               </h3>
               <button
-                onClick={handleCloseModal}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setEditingProduct(null);
+                }}
+                className="text-brand-500/70 hover:text-brand-900 p-1 hover:bg-cream-200"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-200 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div className="m-6 mb-0 p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Nama Produk
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="e.g. Kopi Susu Gula Aren"
-                    className="w-full px-4 py-2.5 bg-cream-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                </div>
-
+            <form onSubmit={handleSaveProduct} className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Kode SKU
+                  <label className="block font-semibold text-brand-500 uppercase mb-1">
+                    SKU Produk
                   </label>
                   <input
                     type="text"
@@ -398,13 +458,13 @@ export default function ProductManager() {
                     onChange={(e) =>
                       setFormData({ ...formData, sku: e.target.value })
                     }
-                    placeholder="KRK-BEV-001"
-                    className="w-full px-4 py-2.5 bg-cream-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    placeholder="KRK-FB-001"
+                    className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 font-mono focus:outline-none focus:border-brand-500"
+                    required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block font-semibold text-brand-500 uppercase mb-1">
                     Kategori
                   </label>
                   <select
@@ -412,9 +472,9 @@ export default function ProductManager() {
                     onChange={(e) =>
                       setFormData({ ...formData, category_id: e.target.value })
                     }
-                    className="w-full px-4 py-2.5 bg-cream-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 focus:outline-none focus:border-brand-500 cursor-pointer"
+                    required
                   >
-                    <option value="">-- Pilih Kategori --</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -422,123 +482,245 @@ export default function ProductManager() {
                     ))}
                   </select>
                 </div>
+              </div>
 
+              <div>
+                <label className="block font-semibold text-brand-500 uppercase mb-1">
+                  Nama Produk
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  placeholder="e.g. Es Kopi Susu Aren"
+                  className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 focus:outline-none focus:border-brand-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block font-semibold text-brand-500 uppercase mb-1">
                     Harga (Rp)
                   </label>
                   <input
                     type="number"
-                    required
-                    min="0"
-                    step="500"
                     value={formData.price}
                     onChange={(e) =>
                       setFormData({ ...formData, price: e.target.value })
                     }
-                    placeholder="18000"
-                    className="w-full px-4 py-2.5 bg-cream-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    placeholder="22000"
+                    className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-500 font-bold focus:outline-none focus:border-brand-500"
+                    required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label className="block font-semibold text-brand-500 uppercase mb-1">
                     Jumlah Stok
                   </label>
                   <input
                     type="number"
-                    required
-                    min="0"
                     value={formData.stock_qty}
                     onChange={(e) =>
                       setFormData({ ...formData, stock_qty: e.target.value })
                     }
                     placeholder="50"
-                    className="w-full px-4 py-2.5 bg-cream-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 font-bold focus:outline-none focus:border-brand-500"
+                    required
                   />
                 </div>
               </div>
 
-              {/* Stock Adjustment Reason (only when editing) */}
-              {editingProduct && (
-                <div className="p-3 bg-cream-50 rounded-xl border border-brand-900/10 space-y-2">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 select-none cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={stockAdjustment.enabled}
-                      onChange={(e) =>
-                        setStockAdjustment({
-                          ...stockAdjustment,
-                          enabled: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 text-brand-500 rounded border-gray-300 focus:ring-brand-500"
-                    />
-                    Penyesuaian stok (ubah jumlah stok)
-                  </label>
-                  {stockAdjustment.enabled && (
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">
-                        Alasan Penyesuaian{" "}
-                        <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={stockAdjustment.reason}
-                        onChange={(e) =>
-                          setStockAdjustment({
-                            ...stockAdjustment,
-                            reason: e.target.value,
-                          })
-                        }
-                        placeholder="e.g. Stok masuk dari supplier, barang rusak, dll."
-                        className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
+              <div>
+                <label className="block font-semibold text-brand-500 uppercase mb-1">
+                  URL Gambar (Opsional)
+                </label>
+                <input
+                  type="url"
+                  value={formData.image_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, image_url: e.target.value })
+                  }
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 focus:outline-none focus:border-brand-500"
+                />
+              </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-2">
                 <input
                   type="checkbox"
-                  id="is_active"
+                  id="prod-active-check"
                   checked={formData.is_active}
                   onChange={(e) =>
                     setFormData({ ...formData, is_active: e.target.checked })
                   }
-                  className="w-4 h-4 text-brand-500 rounded border-gray-300 focus:ring-brand-500"
+                  className="w-4 h-4 text-brand-500 border-cream-200 bg-cream-100 focus:ring-brand-500"
                 />
                 <label
-                  htmlFor="is_active"
-                  className="text-xs font-semibold text-gray-700 select-none"
+                  htmlFor="prod-active-check"
+                  className="font-semibold text-brand-900 cursor-pointer"
                 >
-                  Tersedia / Aktif untuk Penjualan POS
+                  Status Produk Aktif (Dapat dijual di POS)
                 </label>
               </div>
 
-              <div className="flex gap-2 justify-end pt-2">
+              <div className="flex justify-end gap-2 pt-4 border-t border-cream-200">
                 <button
                   type="button"
-                  onClick={handleCloseModal}
-                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded-xl transition"
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingProduct(null);
+                  }}
+                  className="px-4 py-2 border border-cream-200 text-brand-500 hover:bg-cream-100 font-semibold cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-5 py-2 bg-brand-500 hover:bg-brand-900 text-white font-bold shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {submitting ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Check className="w-3.5 h-3.5" />
                   )}
-                  <span>
-                    {editingProduct ? "Simpan Perubahan" : "Buat Produk"}
-                  </span>
+                  <span>Simpan Produk</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Stock Adjustment Modal */}
+      {adjustingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/50 backdrop-blur-xs">
+          <div className="bg-white border border-cream-200 w-full max-w-md overflow-hidden shadow-xl">
+            <div className="flex items-center justify-between px-6 py-4 bg-cream-100 border-b border-cream-200">
+              <h3 className="text-base font-bold text-brand-900 font-serif-heading">
+                Penyesuaian Stok Manual
+              </h3>
+              <button
+                onClick={() => setAdjustingProduct(null)}
+                className="text-brand-500/70 hover:text-brand-900 p-1 hover:bg-cream-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {errorMsg && (
+              <div className="m-6 mb-0 p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleStockAdjustmentSubmit} className="p-6 space-y-4 text-xs">
+              <div className="bg-cream-100 p-3 border border-cream-200">
+                <div className="text-brand-500/70">Produk:</div>
+                <div className="font-bold text-brand-900 text-sm font-serif-heading">
+                  {adjustingProduct.name}
+                </div>
+                <div className="text-brand-500 font-semibold mt-1">
+                  Stok Saat Ini: {adjustingProduct.stock_qty || 0} Unit
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-brand-500 uppercase mb-1.5">
+                  Tipe Penyesuaian
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStockAdjustData({ ...stockAdjustData, type: "add" })
+                    }
+                    className={`py-2 px-3 border text-xs font-bold transition-all cursor-pointer ${
+                      stockAdjustData.type === "add"
+                        ? "bg-emerald-100 border-emerald-300 text-emerald-800"
+                        : "bg-cream-100 border-cream-200 text-brand-500/70"
+                    }`}
+                  >
+                    + Tambah Stok (Restock)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStockAdjustData({ ...stockAdjustData, type: "subtract" })
+                    }
+                    className={`py-2 px-3 border text-xs font-bold transition-all cursor-pointer ${
+                      stockAdjustData.type === "subtract"
+                        ? "bg-rose-100 border-rose-300 text-rose-800"
+                        : "bg-cream-100 border-cream-200 text-brand-500/70"
+                    }`}
+                  >
+                    - Kurangi Stok (Rusak/Audit)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-brand-500 uppercase mb-1">
+                  Jumlah Perubahan Unit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={stockAdjustData.amount}
+                  onChange={(e) =>
+                    setStockAdjustData({
+                      ...stockAdjustData,
+                      amount: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. 25"
+                  className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 font-bold text-sm focus:outline-none focus:border-brand-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-brand-500 uppercase mb-1">
+                  Alasan Penyesuaian Stok (Wajib Dilog)
+                </label>
+                <textarea
+                  value={stockAdjustData.reason}
+                  onChange={(e) =>
+                    setStockAdjustData({
+                      ...stockAdjustData,
+                      reason: e.target.value,
+                    })
+                  }
+                  placeholder="e.g. Restock mingguan dari supplier / Barang kadaluarsa / Inventaris ulang"
+                  rows={3}
+                  className="w-full bg-cream-100 border border-cream-200 p-3 text-brand-900 focus:outline-none focus:border-brand-500 placeholder:text-brand-500/60"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-cream-200">
+                <button
+                  type="button"
+                  onClick={() => setAdjustingProduct(null)}
+                  className="px-4 py-2 border border-cream-200 text-brand-500 hover:bg-cream-100 font-semibold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-brand-500 hover:bg-brand-900 text-white font-bold shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  <span>Simpan Log &amp; Update Stok</span>
                 </button>
               </div>
             </form>
