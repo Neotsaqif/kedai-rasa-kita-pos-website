@@ -17,6 +17,16 @@ Point-of-sale system for Kedai Rasa Kita, a small food & beverage shop. Handles 
 ## Payment Methods (record-only, V1)
 Cash · QRIS · Debit Card · Bank Transfer
 
+## Default Credentials (Testing / Development)
+
+> [!NOTE]
+> Gunakan akun bawaan berikut untuk menguji login dan fitur peran user (*role-based access*):
+
+| Peran (*Role*) | Email | Password Default | Akses Menu |
+|---|---|---|---|
+| **Admin (Owner)** | `admin@kedairasakita.com` | `AdminRasaKita123!` | POS Sales, Categories, Products & Stock, Reports, Staff Accounts |
+| **Cashier (Kasir)** | `cashier@kedairasakita.com` | `CashierRasaKita123!` | POS Sales (Read-Only Menu & Cart Checkout) |
+
 ## Status
 - Timeline: 4 weeks
 - Budget: ~$750

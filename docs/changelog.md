@@ -15,11 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented Admin Category CRUD interface (`src/components/CategoryManager.jsx`).
   - Implemented Admin Product & Inventory CRUD interface with category filters (`src/components/ProductManager.jsx`).
   - Integrated role-restricted menu and real product data fetching in `src/App.jsx`.
+  - Configured user seeding SQL script with automatic profile creation and password hashing.
+  - Completed system test checklist (`docs/test-checklist.md`).
 - Initialized React single-page application using Vite.
 - Configured Tailwind CSS with custom theme colors (`cream-50`, `cream-100`, `cream-200`, `brand-500`, `brand-900`) for Kedai Rasa Kita branding.
 - Added Supabase JS SDK (`@supabase/supabase-js`) and client configuration (`src/lib/supabase.js`).
 - Created complete Supabase PostgreSQL database migration schema (`supabase/schema.sql`).
 - Created initial POS UI shell (`src/App.jsx`).
-- Updated project documentation (`README.md`, `docs/implementation-plan.md`, `docs/changelog.md`).
+- Updated project documentation (`README.md`, `docs/implementation-plan.md`, `docs/changelog.md`, `docs/test-checklist.md`).
+
 
 
