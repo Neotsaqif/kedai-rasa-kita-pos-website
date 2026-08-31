@@ -19,7 +19,8 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
     COALESCE(NEW.raw_user_meta_data->>'role', 'cashier'),
     true
-  );
+  )
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
