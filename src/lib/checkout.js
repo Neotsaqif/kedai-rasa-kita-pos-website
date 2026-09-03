@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { processCheckout as apiProcessCheckout } from "./data";
 
 /**
  * Generate a receipt number in the format KRK-YYYYMMDD-XXXX
@@ -18,8 +18,8 @@ export function generateReceiptNumber() {
 }
 
 /**
- * Process a checkout via the process_checkout RPC.
- * Atomically creates the sale, sale items, decrements stock, and logs stock changes.
+ * Process a checkout atomically (creates the sale, sale items, decrements
+ * stock and logs stock changes) via the active backend (MySQL or Supabase).
  *
  * @param {Array} cart - Array of { id, name, price, qty }
  * @param {string} paymentMethod - 'cash' | 'qris' | 'debit' | 'transfer'
@@ -40,17 +40,11 @@ export async function processCheckout(cart, paymentMethod, cashierId) {
     price: Number(item.price),
   }));
 
-  const { data, error } = await supabase.rpc("process_checkout", {
-    p_receipt_number: receiptNumber,
-    p_cashier_id: cashierId,
-    p_total_amount: totalAmount,
-    p_payment_method: paymentMethod,
-    p_items: items,
+  return apiProcessCheckout({
+    receipt_number: receiptNumber,
+    cashier_id: cashierId,
+    total_amount: totalAmount,
+    payment_method: paymentMethod,
+    items,
   });
-
-  if (error) {
-    throw new Error(error.message || "Gagal memproses pembayaran");
-  }
-
-  return { saleId: data, receiptNumber };
 }

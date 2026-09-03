@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { FolderTree, Plus, Edit2, Trash2, X, Loader2, Check } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import {
+  fetchCategories as apiFetchCategories,
+  fetchProductCategoryRefs as apiFetchProductCategoryRefs,
+  createCategory as apiCreateCategory,
+  updateCategory as apiUpdateCategory,
+  deleteCategory as apiDeleteCategory,
+} from "../lib/data";
 
 export default function CategoryManager() {
   const [categories, setCategories] = useState([]);
@@ -16,19 +22,13 @@ export default function CategoryManager() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [catRes, prodRes] = await Promise.all([
-        supabase
-          .from("categories")
-          .select("*")
-          .order("name", { ascending: true }),
-        supabase.from("products").select("id, category_id"),
+      const [catData, prodRefs] = await Promise.all([
+        apiFetchCategories(),
+        apiFetchProductCategoryRefs(),
       ]);
 
-      if (catRes.error) throw catRes.error;
-      if (prodRes.error) throw prodRes.error;
-
-      setCategories(catRes.data || []);
-      setProducts(prodRes.data || []);
+      setCategories(catData || []);
+      setProducts(prodRefs || []);
     } catch (err) {
       console.error("Error loading categories:", err);
     } finally {
@@ -61,19 +61,10 @@ export default function CategoryManager() {
 
     try {
       if (editingCategory) {
-        const { error } = await supabase
-          .from("categories")
-          .update({ name: catNameInput.trim() })
-          .eq("id", editingCategory.id);
-
-        if (error) throw error;
+        await apiUpdateCategory(editingCategory.id, catNameInput.trim());
         setEditingCategory(null);
       } else {
-        const { error } = await supabase
-          .from("categories")
-          .insert([{ name: catNameInput.trim() }]);
-
-        if (error) throw error;
+        await apiCreateCategory(catNameInput.trim());
         setIsAddModalOpen(false);
       }
 
@@ -89,8 +80,7 @@ export default function CategoryManager() {
     if (!window.confirm(`Yakin ingin menghapus kategori "${c.name}"?`)) return;
 
     try {
-      const { error } = await supabase.from("categories").delete().eq("id", c.id);
-      if (error) throw error;
+      await apiDeleteCategory(c.id);
       await fetchData();
     } catch (err) {
       alert(err.message || "Gagal menghapus kategori");

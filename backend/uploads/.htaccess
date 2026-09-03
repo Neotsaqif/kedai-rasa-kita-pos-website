@@ -1,0 +1,6 @@
+# Disable script execution
+php_flag engine off
+
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>

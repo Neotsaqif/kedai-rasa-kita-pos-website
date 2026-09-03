@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import { fetchSales as apiFetchSales, fetchProducts as apiFetchProducts, fetchStockLogs as apiFetchStockLogs } from "../lib/data";
 import { formatRupiah, formatDateShort, formatDate } from "../lib/format";
 import {
   BarChart,
@@ -37,42 +37,11 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Fetch sales with items
-      const { data: salesData, error: salesErr } = await supabase
-        .from("transactions")
-        .select(`
-          id,
-          total_amount,
-          payment_method,
-          status,
-          created_at,
-          transaction_items (
-            product_id,
-            product_name,
-            quantity,
-            price_at_sale,
-            subtotal
-          )
-        `)
-        .order("created_at", { ascending: false });
-
-      if (salesErr) console.error("Error fetching sales:", salesErr);
-
-      // Fetch products
-      const { data: prodData, error: prodErr } = await supabase
-        .from("products")
-        .select("*")
-        .order("name", { ascending: true });
-
-      if (prodErr) console.error("Error fetching products:", prodErr);
-
-      // Fetch stock logs if table exists
-      const { data: logsData, error: logsErr } = await supabase
-        .from("stock_logs")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (logsErr && logsErr.code !== "42P01") console.error("Error fetching logs:", logsErr);
+      const [salesData, prodData, logsData] = await Promise.all([
+        apiFetchSales(null),
+        apiFetchProducts(),
+        apiFetchStockLogs(),
+      ]);
 
       setSales(salesData || []);
       setProducts(prodData || []);

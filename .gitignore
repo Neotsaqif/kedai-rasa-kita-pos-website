@@ -37,3 +37,6 @@ tmp/
 
 # Frontend example
 frontend-example/
+
+# Agent configuration
+.agents/

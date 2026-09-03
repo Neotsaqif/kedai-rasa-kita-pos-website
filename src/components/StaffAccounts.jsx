@@ -11,7 +11,11 @@ import {
   Shield,
   User,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import {
+  fetchProfiles as apiFetchProfiles,
+  createCashier as apiCreateCashier,
+  toggleUserActive as apiToggleUserActive,
+} from "../lib/data";
 
 export default function StaffAccounts() {
   const [staff, setStaff] = useState([]);
@@ -29,11 +33,7 @@ export default function StaffAccounts() {
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      const data = await apiFetchProfiles();
       setStaff(data || []);
     } catch (err) {
       console.error("Error loading staff:", err);
@@ -69,31 +69,12 @@ export default function StaffAccounts() {
     setErrorMsg("");
 
     try {
-      // Create auth user using supabase.auth.signUp or admin API if enabled
-      const { data, error } = await supabase.auth.signUp({
+      // Create the cashier account (handles both MySQL & Supabase backends)
+      await apiCreateCashier({
+        name: formData.name.trim(),
         email: formData.email.trim(),
         password: formData.password,
-        options: {
-          data: {
-            name: formData.name.trim(),
-            role: "cashier",
-          },
-        },
       });
-
-      if (error) throw error;
-
-      if (data?.user) {
-        await supabase.from("profiles").upsert(
-          {
-            id: data.user.id,
-            name: formData.name.trim(),
-            role: "cashier",
-            is_active: true,
-          },
-          { onConflict: "id" }
-        );
-      }
 
       setSuccessMsg(`Akun kasir "${formData.name.trim()}" berhasil dibuat.`);
       handleCloseModal();
@@ -109,11 +90,7 @@ export default function StaffAccounts() {
 
   const handleToggleActive = async (staffMember) => {
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_active: !staffMember.is_active })
-        .eq("id", staffMember.id);
-      if (error) throw error;
+      await apiToggleUserActive(staffMember.id, !staffMember.is_active);
       await fetchStaff();
     } catch (err) {
       alert(err.message || "Gagal mengubah status akun.");
@@ -285,7 +262,7 @@ export default function StaffAccounts() {
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
-                  placeholder="kasir@kedairasakita.com"
+                  placeholder="kasir@rasakita.id"
                   className="w-full bg-cream-100 border border-cream-200 px-4 py-2.5 text-brand-900 focus:outline-none focus:border-brand-500 text-sm"
                 />
               </div>

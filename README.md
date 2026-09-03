@@ -39,19 +39,35 @@ Cash · QRIS · Debit Card · Bank Transfer
 > [!NOTE]
 > Gunakan akun bawaan berikut untuk menguji login dan fitur peran user (_role-based access_):
 
-| Peran (_Role_)      | Email                       | Password Default      | Akses Menu                                                       |
-| ------------------- | --------------------------- | --------------------- | ---------------------------------------------------------------- |
-| **Admin (Owner)**   | `admin@kedairasakita.com`   | `AdminRasaKita123!`   | Kasir, Riwayat, Dashboard, Produk, Kategori, Laporan, Akun Kasir |
-| **Cashier (Kasir)** | `cashier@kedairasakita.com` | `CashierRasaKita123!` | Kasir, Riwayat (hanya transaksi sendiri)                         |
+| Peran (_Role_)      | Email                  | Password Default  | Akses Menu                                                       |
+| ------------------- | ---------------------- | ----------------- | ---------------------------------------------------------------- |
+| **Admin (Owner)**   | `admin@rasakita.id`    | `password123`     | Kasir, Riwayat, Dashboard, Produk, Kategori, Laporan, Akun Kasir |
+| **Cashier (Kasir)** | `kasir@rasakita.id`    | `password123`     | Kasir, Riwayat (hanya transaksi sendiri)                         |
+
+> [!TIP]
+> Credentials di atas **persis sama** dengan tombol *Uji Coba Cepat (Demo Logins)* di layar
+> login, jadi Anda bisa langsung memakai salah satu tombol tersebut untuk mengisi form.
 
 ## Status
 
 - Timeline: 4 weeks
 - Budget: ~$750
-- Stage: Week 1–3 Complete (Foundation, Supabase RLS, Auth, Product & Category Management, Full UI Design System, POS Flow, Receipt, Sales History, Dashboard, Staff Accounts)
+- Stage: Week 1–3 Complete (Foundation & Data Layer, UI Design System, POS Flow, Receipt, Sales History, Dashboard, Staff Accounts, Switchable Supabase ⇄ MySQL backend); Week 4 (Deployment & Delivery) In Progress — see `docs/implementation-plan.md` §8
 
 ## Tech Stack
 
-React (Vite) · Tailwind CSS · Supabase (PostgreSQL, Auth, RLS) · Lucide Icons · Inter Font
+React (Vite) · Tailwind CSS · **Switchable backend: MySQL (XAMPP / PHP/PDO)** or **Supabase** (PostgreSQL, Auth, RLS) · Lucide Icons · Inter/Plus Jakarta Sans · Playfair Display
 
-See `docs/implementation-plan.md` for full details.
+See `docs/implementation-plan.md` for full details, including the **Backend Switcher**
+section that explains how `VITE_DB_BACKEND` (`mysql` default / `supabase`) controls which
+database the app uses.
+
+## Running with local MySQL (XAMPP)
+
+1. Start **Apache** + **MySQL** in XAMPP.
+2. Import `backend/sql/schema.sql` (phpMyAdmin or `mysql` CLI) to create the `kedai_rasa_kita` DB.
+3. Run `backend/sql/seed.php` once to create the default admin/cashier accounts.
+4. Check `.env`: `VITE_DB_BACKEND=mysql` and `VITE_API_BASE_URL` pointing at `backend/api/index.php`.
+5. `npm install` then `npm run dev`, and open the printed URL.
+
+> To switch back to Supabase, set `VITE_DB_BACKEND=supabase` in `.env` and restart the dev server.

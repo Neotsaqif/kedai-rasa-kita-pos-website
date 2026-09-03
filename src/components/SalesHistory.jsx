@@ -10,7 +10,12 @@ import {
   Printer,
   Loader2,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import {
+  fetchSales as apiFetchSales,
+  fetchProfiles as apiFetchProfiles,
+  requestRefund as apiRequestRefund,
+  approveRefund as apiApproveRefund,
+} from "../lib/data";
 import { formatRupiah, formatDate } from "../lib/format";
 import ReceiptModal from "./ReceiptModal";
 
@@ -31,26 +36,7 @@ export default function SalesHistory({ isAdmin, currentUserId }) {
   const fetchSales = async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from("transactions")
-        .select(`
-          *,
-          transaction_items (
-            product_id,
-            product_name,
-            quantity,
-            price_at_sale,
-            subtotal
-          )
-        `)
-        .order("created_at", { ascending: false });
-
-      if (!isAdmin && currentUserId) {
-        query = query.eq("cashier_id", currentUserId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
+      const data = await apiFetchSales(isAdmin ? null : currentUserId);
       setSales(data || []);
     } catch (err) {
       console.error("Error loading sales:", err);
@@ -62,11 +48,7 @@ export default function SalesHistory({ isAdmin, currentUserId }) {
 
   const fetchCashiers = async () => {
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, name, role")
-        .order("name", { ascending: true });
-      if (error) throw error;
+      const data = await apiFetchProfiles();
       setCashiers(data || []);
     } catch {
       setCashiers([]);
@@ -116,15 +98,7 @@ export default function SalesHistory({ isAdmin, currentUserId }) {
     if (!selectedSale || !refundReasonInput.trim()) return;
 
     try {
-      const { error } = await supabase
-        .from("transactions")
-        .update({
-          status: "refund_requested",
-          notes: `Refund Request: ${refundReasonInput.trim()}`,
-        })
-        .eq("id", selectedSale.id);
-
-      if (error) throw error;
+      await apiRequestRefund(selectedSale.id, refundReasonInput.trim());
       setIsRefundModalOpen(false);
       setRefundReasonInput("");
       setSelectedSale(null);
@@ -136,12 +110,7 @@ export default function SalesHistory({ isAdmin, currentUserId }) {
 
   const handleApproveRefundClick = async (saleId) => {
     try {
-      const { error } = await supabase
-        .from("transactions")
-        .update({ status: "refunded" })
-        .eq("id", saleId);
-
-      if (error) throw error;
+      await apiApproveRefund(saleId);
       setSelectedSale(null);
       await fetchSales();
     } catch (err) {

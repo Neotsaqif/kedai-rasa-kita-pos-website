@@ -5,13 +5,23 @@ import {
   Edit2,
   Power,
   Sliders,
+  Trash2,
   Search,
   AlertTriangle,
   X,
   Loader2,
   Check,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import {
+  fetchProducts as apiFetchProducts,
+  fetchCategories as apiFetchCategories,
+  createProduct as apiCreateProduct,
+  updateProduct as apiUpdateProduct,
+  toggleProductActive as apiToggleProductActive,
+  deleteProduct as apiDeleteProduct,
+  adjustStock as apiAdjustStock,
+  uploadImageFile as apiUploadImageFile,
+} from "../lib/data";
 import { formatRupiah } from "../lib/format";
 
 export default function ProductManager() {
@@ -43,27 +53,33 @@ export default function ProductManager() {
   });
 
   const [submitting, setSubmitting] = useState(false);
+  const [importingImage, setImportingImage] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportingImage(true);
+    try {
+      const { image_url } = await apiUploadImageFile(file);
+      setFormData({ ...formData, image_url });
+    } catch (err) {
+      alert("Gagal mengunggah gambar: " + err.message);
+    } finally {
+      setImportingImage(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [prodRes, catRes] = await Promise.all([
-        supabase
-          .from("products")
-          .select("*, categories(name)")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("categories")
-          .select("*")
-          .order("name", { ascending: true }),
+      const [prodData, catData] = await Promise.all([
+        apiFetchProducts(),
+        apiFetchCategories(),
       ]);
 
-      if (prodRes.error) throw prodRes.error;
-      if (catRes.error) throw catRes.error;
-
-      setProducts(prodRes.data || []);
-      setCategories(catRes.data || []);
+      setProducts(prodData || []);
+      setCategories(catData || []);
     } catch (err) {
       console.error("Error loading products/categories:", err);
     } finally {
@@ -135,15 +151,10 @@ export default function ProductManager() {
 
     try {
       if (editingProduct) {
-        const { error } = await supabase
-          .from("products")
-          .update(payload)
-          .eq("id", editingProduct.id);
-        if (error) throw error;
+        await apiUpdateProduct(editingProduct.id, payload);
         setEditingProduct(null);
       } else {
-        const { error } = await supabase.from("products").insert([payload]);
-        if (error) throw error;
+        await apiCreateProduct(payload);
         setIsAddModalOpen(false);
       }
 
@@ -157,14 +168,24 @@ export default function ProductManager() {
 
   const handleToggleActive = async (p) => {
     try {
-      const { error } = await supabase
-        .from("products")
-        .update({ is_active: !p.is_active })
-        .eq("id", p.id);
-      if (error) throw error;
+      await apiToggleProductActive(p.id, !p.is_active);
       await fetchData();
     } catch (err) {
       alert(err.message || "Gagal mengubah status produk");
+    }
+  };
+
+  const handleDeleteProduct = async (p) => {
+    const confirmed = window.confirm(
+      `Apakah Anda yakin ingin menghapus produk "${p.name}"?\n\nTindakan ini tidak dapat dibatalkan.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await apiDeleteProduct(p.id);
+      await fetchData();
+    } catch (err) {
+      alert(err.message || "Gagal menghapus produk");
     }
   };
 
@@ -185,25 +206,14 @@ export default function ProductManager() {
     setErrorMsg("");
 
     try {
-      // Update product stock
-      const { error: updateErr } = await supabase
-        .from("products")
-        .update({ stock_qty: newStock })
-        .eq("id", adjustingProduct.id);
-
-      if (updateErr) throw updateErr;
-
-      // Log stock adjustment
-      await supabase.from("stock_logs").insert([
-        {
-          product_id: adjustingProduct.id,
-          product_name: adjustingProduct.name,
-          change_qty: qtyChange,
-          quantity_change: qtyChange,
-          reason: "adjustment",
-          note: stockAdjustData.reason,
-        },
-      ]);
+      await apiAdjustStock({
+        product_id: adjustingProduct.id,
+        product_name: adjustingProduct.name,
+        new_stock: newStock,
+        change_qty: qtyChange,
+        reason: "adjustment",
+        note: stockAdjustData.reason,
+      });
 
       setAdjustingProduct(null);
       setStockAdjustData({ type: "add", amount: "", reason: "" });
@@ -409,6 +419,15 @@ export default function ProductManager() {
                           >
                             <Power className="w-3.5 h-3.5" />
                           </button>
+
+                          <button
+                            id={`btn-delete-prod-${p.id}`}
+                            onClick={() => handleDeleteProduct(p)}
+                            title="Hapus Produk"
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -535,17 +554,22 @@ export default function ProductManager() {
 
               <div>
                 <label className="block font-semibold text-brand-500 uppercase mb-1">
-                  URL Gambar (Opsional)
+                  Gambar Produk (Opsional)
                 </label>
-                <input
-                  type="url"
-                  value={formData.image_url}
-                  onChange={(e) =>
-                    setFormData({ ...formData, image_url: e.target.value })
-                  }
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full bg-cream-100 border border-cream-200 px-4 py-2 text-brand-900 focus:outline-none focus:border-brand-500"
-                />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-brand-500">Unggah file:</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="text-sm text-brand-900"
+                    disabled={importingImage}
+                  />
+                  {importingImage && <Loader2 className="w-4 h-4 animate-spin text-brand-500" />}
+                </div>
+                {importingImage && (
+                  <p className="text-xs text-brand-500/70 mt-1">Mengunggah gambar...</p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pt-2">

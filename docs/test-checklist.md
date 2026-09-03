@@ -46,7 +46,9 @@ For both **products** and **categories**:
 - [x] Empty states
 - [x] Changes persist after refresh
 - [x] Duplicate/invalid data is rejected
+- [x] Negative price / negative stock rejected by the backend (`create_product` / `update_product`)
 - [x] Delete behavior handles related records correctly
+- [x] Delete product also removes its uploaded image file (best-effort, path-safe)
 
 ## UI Design System
 
@@ -62,6 +64,7 @@ For both **products** and **categories**:
 
 - [x] Product grid loads with category tabs (Semua/Makanan/Minuman/Snack)
 - [x] Search bar filters products by name
+- [x] Empty state shows "Tidak ada produk." when no products exist (no mock fallback)
 - [x] Product cards show name, price (Rp format), and stock badge
 - [x] Stock badges: green if in stock, red/orange if low (≤5), grey if 0
 - [x] Out-of-stock products are disabled and cannot be added to cart
@@ -71,6 +74,8 @@ For both **products** and **categories**:
 - [x] Order total updates correctly
 - [x] Payment method pills: Tunai, QRIS, Debit, Transfer
 - [x] "Proses Pembayaran" button disabled when cart is empty
+- [x] Checkout opens a confirmation popup ("Apakah Anda yakin ingin melanjutkan transaksi ini?") with item/payment/total summary
+- [x] Confirming ("Ya, Lanjutkan") processes the sale; "Batal" cancels without side effects
 - [x] Checkout processes via `process_checkout` RPC
 - [x] Stock auto-decrements after successful checkout
 - [x] Error message shown if checkout fails (e.g., insufficient stock)
@@ -117,3 +122,6 @@ For both **products** and **categories**:
 - [x] Reason field is mandatory when stock adjustment is enabled
 - [x] Stock change is logged to `stock_logs` with reason `adjustment`
 - [x] Validation error shown if reason is empty
+- [x] Backend recomputes stock from `change_qty` (missing `new_stock` cannot zero/corrupt stock)
+- [x] Backend rejects a resulting negative stock
+- [x] Backend rejects an empty reason on `adjust_stock`

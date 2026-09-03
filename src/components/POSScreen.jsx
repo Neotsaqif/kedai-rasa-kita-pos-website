@@ -14,10 +14,11 @@ import {
   AlertCircle,
   PackageX,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import { fetchProducts as apiFetchProducts, fetchCategories as apiFetchCategories } from "../lib/data";
 import { formatRupiah } from "../lib/format";
 import { processCheckout } from "../lib/checkout";
 import ReceiptModal from "./ReceiptModal";
+import ConfirmTransactionModal from "./ConfirmTransactionModal";
 
 const PAYMENT_METHODS = [
   { id: "cash", label: "Tunai (Cash)", icon: Banknote },
@@ -38,49 +39,29 @@ export default function POSScreen({ cashierId, onSaleComplete }) {
   const [processing, setProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [receipt, setReceipt] = useState(null);
-
-  const sampleProducts = [
-    { id: 1, name: "Kopi Susu Gula Aren", sku: "KRK-DR-001", price: 18000, category: "Minuman", stock_qty: 25 },
-    { id: 2, name: "Americano Cold Brew", sku: "KRK-DR-002", price: 15000, category: "Minuman", stock_qty: 40 },
-    { id: 3, name: "Es Teh Manis Jasmine", sku: "KRK-DR-003", price: 6000, category: "Minuman", stock_qty: 50 },
-    { id: 4, name: "Roti Bakar Coklat Keju", sku: "KRK-FD-001", price: 20000, category: "Makanan", stock_qty: 15 },
-    { id: 5, name: "Nasi Goreng Special KRK", sku: "KRK-FD-002", price: 25000, category: "Makanan", stock_qty: 10 },
-    { id: 6, name: "Pisang Goreng Keju", sku: "KRK-SN-001", price: 12000, category: "Snack", stock_qty: 3 },
-    { id: 7, name: "Kentang Goreng Original", sku: "KRK-SN-002", price: 15000, category: "Snack", stock_qty: 0 },
-  ];
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const [prodRes, catRes] = await Promise.all([
-        supabase
-          .from("products")
-          .select("*, categories(name)")
-          .eq("is_active", true)
-          .order("name", { ascending: true }),
-        supabase
-          .from("categories")
-          .select("*")
-          .order("name", { ascending: true }),
+      const [prodData, catData] = await Promise.all([
+        apiFetchProducts(true),
+        apiFetchCategories(),
       ]);
 
-      if (prodRes.error || !prodRes.data || prodRes.data.length === 0) {
-        setProducts(sampleProducts);
-      } else {
-        setProducts(prodRes.data);
-      }
+      setProducts(prodData && prodData.length > 0 ? prodData : []);
 
-      if (catRes.error || !catRes.data || catRes.data.length === 0) {
+      if (!catData || catData.length === 0) {
         setCategories([
           { id: 1, name: "Makanan" },
           { id: 2, name: "Minuman" },
           { id: 3, name: "Snack" },
         ]);
       } else {
-        setCategories(catRes.data);
+        setCategories(catData);
       }
     } catch {
-      setProducts(sampleProducts);
+      setProducts([]);
       setCategories([
         { id: 1, name: "Makanan" },
         { id: 2, name: "Minuman" },
@@ -162,7 +143,7 @@ export default function POSScreen({ cashierId, onSaleComplete }) {
     setCashPaidInput(amount.toString());
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (cart.length === 0) return;
 
     if (paymentMethod === "cash" && numericCashPaid < totalAmount) {
@@ -170,8 +151,13 @@ export default function POSScreen({ cashierId, onSaleComplete }) {
       return;
     }
 
-    setProcessing(true);
     setErrorMsg("");
+    setShowConfirm(true);
+  };
+
+  const confirmCheckout = async () => {
+    setShowConfirm(false);
+    setProcessing(true);
 
     try {
       const result = await processCheckout(cart, paymentMethod, cashierId);
@@ -253,8 +239,8 @@ export default function POSScreen({ cashierId, onSaleComplete }) {
         ) : filteredProducts.length === 0 ? (
           <div className="bg-white border border-cream-200 p-12 text-center text-brand-500/60">
             <PackageX className="w-12 h-12 mx-auto text-brand-500/60 mb-3" />
-            <p className="text-sm font-bold text-brand-900">Tidak ada produk ditemukan.</p>
-            <p className="text-xs text-brand-500/60 mt-1">Coba kata kunci pencarian atau kategori lain.</p>
+            <p className="text-sm font-bold text-brand-900">Tidak ada produk.</p>
+            <p className="text-xs text-brand-500/60 mt-1">Belum ada produk tersedia atau coba kata kunci pencarian/kategori lain.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-4">
@@ -554,6 +540,22 @@ export default function POSScreen({ cashierId, onSaleComplete }) {
           </button>
         </div>
       </aside>
+
+      {/* Confirmation Modal */}
+      <ConfirmTransactionModal
+        open={showConfirm}
+        title="Konfirmasi Transaksi"
+        message="Apakah Anda yakin ingin melanjutkan transaksi ini?"
+        confirmLabel="Ya, Lanjutkan"
+        cancelLabel="Batal"
+        onConfirm={confirmCheckout}
+        onCancel={() => setShowConfirm(false)}
+        details={[
+          { label: "Jumlah Item", value: `${cart.length} items` },
+          { label: "Metode Pembayaran", value: paymentMethod.toUpperCase() },
+          { label: "Total", value: formatRupiah(totalAmount) },
+        ]}
+      />
 
       {/* Printable Receipt Modal */}
       {receipt && (

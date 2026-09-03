@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import {
+  getInitialUser,
+  subscribeAuthChange,
+  login as apiLogin,
+  logout as apiLogout,
+  fetchProfile as apiFetchProfile,
+} from '../lib/data';
 
 const AuthContext = createContext();
 
@@ -10,17 +16,9 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = async (userId) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const data = await apiFetchProfile(userId);
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error.message);
-      }
-      
-      // Fallback profile if RLS or record does not exist yet
+      // Fallback profile if the record does not exist yet (or RLS hides it)
       if (!data) {
         setProfile({ id: userId, role: 'cashier', name: 'Cashier Staff' });
       } else {
@@ -32,45 +30,53 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
+    let active = true;
+
     // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
+    getInitialUser().then((initialUser) => {
+      if (!active) return;
+      setUser(initialUser ?? null);
+      if (initialUser) {
+        fetchProfile(initialUser.id);
       } else {
         setProfile(null);
       }
       setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfile(session.user.id);
+    // Listen for auth changes where the backend supports them (Supabase).
+    // For the local MySQL backend the session is client-side, so this is a no-op.
+    const { unsubscribe } = subscribeAuthChange(async (nextUser) => {
+      if (!active) return;
+      setUser(nextUser ?? null);
+      if (nextUser) {
+        await fetchProfile(nextUser.id);
       } else {
         setProfile(null);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) throw error;
-    return data;
+    const authUser = await apiLogin(email, password);
+    setUser(authUser);
+    await fetchProfile(authUser.id);
+    return authUser;
   };
 
   const logout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-    setUser(null);
-    setProfile(null);
+    try {
+      await apiLogout();
+    } finally {
+      setUser(null);
+      setProfile(null);
+    }
   };
 
   const isAdmin = profile?.role === 'admin';
